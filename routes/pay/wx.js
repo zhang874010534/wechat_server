@@ -25,13 +25,24 @@ router.get('/getOpenId', function (req, res) {
     request.get(url, (err, response, body) => {
       if(!err) {
         const data = JSON.parse(body)
+        cache.put('access_token', data.access_token, 1000 * 60)
+        cache.put('openid', data.openid, 1000 * 60)
         console.log(data,'body')
         res.cookie('openId', data.openid, {
-          maxAge: 1000 * 60
+          maxAge: 1000 * 60,
+          samesite: 'none'
         })
         res.json(data)
       }
     })
   }
+})
+router.get('/getUserInfo', function (req, res) {
+  const access_token = cache.get('access_token')
+  const openid = cache.get('openid')
+  let url = `https://api.weixin.qq.com/sns/userinfo?access_token=${access_token}&openid=${openid}&lang=zh_CN`
+  request.get(url, (err, response, body) => {
+    res.json(JSON.parse(body))
+  })
 })
 module.exports = router
