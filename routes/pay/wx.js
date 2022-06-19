@@ -3,6 +3,7 @@ const router = express.Router()
 const request = require('request')
 const config = require('./config')
 const cache = require('memory-cache')
+const {sha1} = require('../../utils/crypto')
 router.get('/test', function (req, res) {
   res.json({
     code: 0,
@@ -25,11 +26,12 @@ router.get('/getOpenId', function (req, res) {
     request.get(url, (err, response, body) => {
       if(!err) {
         const data = JSON.parse(body)
-        cache.put('access_token', data.access_token, 1000 * 60)
-        cache.put('openid', data.openid, 1000 * 60)
-        console.log(data,'body')
+        const expire_time = 1000 * 10
+        cache.put('access_token', data.access_token, expire_time )
+        cache.put('openid', data.openid, expire_time)
+        // console.log(data,'body')
         res.cookie('openId', data.openid, {
-          maxAge: 1000 * 60,
+          maxAge: expire_time,
           samesite: 'none'
         })
         res.json(data)
@@ -45,4 +47,30 @@ router.get('/getUserInfo', function (req, res) {
     res.json(JSON.parse(body))
   })
 })
+
+router.get('/getConfig', function (req,res) {
+  let url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${config.wx.appId}&secret=${config.wx.appSecret}`
+  request.get(url, (err, response, body) => {
+    const data = JSON.parse(body)
+    cache.put('sdk_access_token',data.access_token)
+    getTicket(res, req.query.url)
+  })
+})
+const getTicket = async (res, sdkUrl) => {
+  const access_token = cache.get('sdk_access_token')
+  let url = `https://api.weixin.qq.com/cgi-bin/ticket/getticket?access_token=${access_token}&type=jsapi`
+  request.get(url, (err, response, body) => {
+    const data = JSON.parse(body)
+    const nonceStr = 'Wm3WZYTPz0wzccnW'
+    const timestamp = Date.now()
+    let raw = `jsapi_ticket=${data.ticket}&noncestr=&timestamp=${timestamp}&url=${sdkUrl}`
+    res.json({
+      appId: config.wx.appId, // 必填，公众号的唯一标识
+      timestamp, // 必填，生成签名的时间戳
+      nonceStr: nonceStr, // 必填，生成签名的随机串
+      signature: sha1(raw),// 必填，签名
+      sdkUrl: sdkUrl
+    })
+  })
+}
 module.exports = router
